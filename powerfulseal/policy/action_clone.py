@@ -26,7 +26,7 @@ DEFAULT_TOXIPROXY_IMAGE = "docker.io/shopify/toxiproxy:2.1.4"
 DEFAULT_IPTABLES_IMAGE = "gaiadocker/iproute2:latest"
 
 
-class DeleteDeploymentAction():
+class DeleteStatefulSetAction():
   def __init__(self, name, namespace, k8s_inventory, logger=None):
     self.name = name
     self.namespace = namespace
@@ -35,14 +35,14 @@ class DeleteDeploymentAction():
 
   def execute(self):
     try:
-      response = self.k8s_inventory.k8s_client.delete_deployment(
+      response = self.k8s_inventory.k8s_client.delete_statefulset(
         namespace=self.namespace,
         name=self.name,
       )
       self.logger.debug("Response %s", response)
-      self.logger.info("Clone deployment deleted successfully: %s in %s", self.name, self.namespace)
+      self.logger.info("Clone statefulset deleted successfully: %s in %s", self.name, self.namespace)
     except:
-      self.logger.exception("Error deleting clone deployment: %s in %s", self.name, self.namespace)
+      self.logger.exception("Error deleting clone statefulset: %s in %s", self.name, self.namespace)
       return False
 
 class ActionClone(ActionAbstract):
@@ -59,17 +59,17 @@ class ActionClone(ActionAbstract):
     return self.cleanup_actions
 
   def get_source_schema(self, source):
-    # currently, only deployments are supported
-    source_deployment = source.get("deployment")
-    deployment = self.k8s_inventory.k8s_client.get_deployment(
-      name=source_deployment.get("name"),
-      namespace=source_deployment.get("namespace"),
+    # currently, only statefulsets are supported
+    source_statefulset = source.get("statefulset")
+    statefulset = self.k8s_inventory.k8s_client.get_statefulset(
+      name=source_statefulset.get("name"),
+      namespace=source_statefulset.get("namespace"),
     )
-    return deployment
+    return statefulset
 
   def modify_labels(self, body, update_labels):
     """
-      Modifies labels and deployment selectors as required by the schema
+      Modifies labels and statefulset selectors as required by the schema
     """
     for label_modifier in self.schema.get("labels", []):
 
@@ -99,7 +99,7 @@ class ActionClone(ActionAbstract):
     return body
 
   def execute(self):
-    # get the source deployment
+    # get the source statefulset
     try:
       source_schema = self.get_source_schema(self.schema.get("source"))
     except:
@@ -111,21 +111,21 @@ class ActionClone(ActionAbstract):
       name=source_schema.metadata.name + "-chaos",
       namespace=source_schema.metadata.namespace,
       annotations=dict(
-        original_deployment=source_schema.metadata.name,
+        original_statefulset=source_schema.metadata.name,
         chaos_scenario=self.name,
       ),
       labels = dict(
         chaos="true",
       ),
     )
-    body.spec = kubernetes.client.V1DeploymentSpec(
+    body.spec = kubernetes.client.V1StatefulSetSpec(
       replicas=self.schema.get("replicas", 1),
       selector=source_schema.spec.selector,
       template=source_schema.spec.template,
     )
 
     if body.spec.selector.match_expressions is not None:
-      self.logger.error("Deployment is using match_expressions. Not supported")
+      self.logger.error("StatefulSet is using match_expressions. Not supported")
       return False
 
     # handle the labels modifiers
@@ -168,12 +168,12 @@ class ActionClone(ActionAbstract):
     # create the clone
     try:
       self.logger.debug("Body %s", body)
-      response = self.k8s_inventory.k8s_client.create_deployment(
+      response = self.k8s_inventory.k8s_client.create_statefulset(
         namespace=body.metadata.namespace,
         body=body,
       )
       self.logger.debug("Response %s", response)
-      self.logger.info("Clone deployment created successfully")
+      self.logger.info("Clone statefulset created successfully")
     except:
       return False
 
